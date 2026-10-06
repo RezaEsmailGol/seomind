@@ -1,0 +1,16 @@
+services:
+  seomind:
+    build: .
+    container_name: seomind
+    ports:
+      - "8787:8787"
+    environment:
+      SEOMIND_HOST: 0.0.0.0
+      SEOMIND_PORT: 8787
+      SEOMIND_DATA_DIR: /data
+    volumes:
+      - seomind-data:/data
+    restart: unless-stopped
+
+volumes:
+  seomind-data:
