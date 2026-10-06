@@ -53,6 +53,28 @@ class LocalStorage:
                     page_count INTEGER NOT NULL,
                     payload_json TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS monitored_sites (
+                    site_url TEXT PRIMARY KEY,
+                    label TEXT NOT NULL DEFAULT '',
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS assistant_reports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    site_url TEXT NOT NULL,
+                    report_date TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    health_score INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    UNIQUE(site_url, report_date)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_assistant_reports_site_date
+                ON assistant_reports(site_url, report_date DESC);
                 """
             )
 
@@ -135,57 +157,88 @@ class LocalStorage:
             row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
         return str(row["value"]) if row else default
 
-    def save_audit(
-        self,
-        *,
-        site_url: str,
-        start_date: str,
-        end_date: str,
-        row_count: int,
-        payload: dict[str, Any],
-    ) -> int:
+    def upsert_monitored_site(self, site_url: str, label: str = "", enabled: bool = True) -> None:
+        now = datetime.now(UTC).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO monitored_sites(site_url, label, enabled, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(site_url) DO UPDATE SET
+                    label = CASE WHEN excluded.label != '' THEN excluded.label ELSE monitored_sites.label END,
+                    enabled = excluded.enabled,
+                    updated_at = excluded.updated_at
+                """,
+                (site_url, label, 1 if enabled else 0, now, now),
+            )
+
+    def list_monitored_sites(self, enabled_only: bool = False) -> list[dict[str, Any]]:
+        sql = "SELECT site_url, label, enabled, created_at, updated_at FROM monitored_sites"
+        if enabled_only:
+            sql += " WHERE enabled = 1"
+        sql += " ORDER BY created_at ASC"
+        with self._connect() as conn:
+            rows = conn.execute(sql).fetchall()
+        return [
+            {
+                "site_url": row["site_url"],
+                "label": row["label"],
+                "enabled": bool(row["enabled"]),
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+            for row in rows
+        ]
+
+    def set_site_enabled(self, site_url: str, enabled: bool) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE monitored_sites SET enabled = ?, updated_at = ? WHERE site_url = ?",
+                (1 if enabled else 0, datetime.now(UTC).isoformat(), site_url),
+            )
+
+    def save_audit(self, *, site_url: str, start_date: str, end_date: str, row_count: int, payload: dict[str, Any]) -> int:
         with self._connect() as conn:
             cur = conn.execute(
                 """
                 INSERT INTO audits(site_url, start_date, end_date, created_at, row_count, payload_json)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    site_url,
-                    start_date,
-                    end_date,
-                    datetime.now(UTC).isoformat(),
-                    row_count,
-                    json.dumps(payload, ensure_ascii=False),
-                ),
+                (site_url, start_date, end_date, datetime.now(UTC).isoformat(), row_count, json.dumps(payload, ensure_ascii=False)),
             )
             return int(cur.lastrowid)
 
-    def save_technical_audit(
-        self,
-        *,
-        site_url: str,
-        start_date: str,
-        end_date: str,
-        page_count: int,
-        payload: dict[str, Any],
-    ) -> int:
+    def save_technical_audit(self, *, site_url: str, start_date: str, end_date: str, page_count: int, payload: dict[str, Any]) -> int:
         with self._connect() as conn:
             cur = conn.execute(
                 """
                 INSERT INTO technical_audits(site_url, start_date, end_date, created_at, page_count, payload_json)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    site_url,
-                    start_date,
-                    end_date,
-                    datetime.now(UTC).isoformat(),
-                    page_count,
-                    json.dumps(payload, ensure_ascii=False),
-                ),
+                (site_url, start_date, end_date, datetime.now(UTC).isoformat(), page_count, json.dumps(payload, ensure_ascii=False)),
             )
             return int(cur.lastrowid)
+
+    def save_assistant_report(self, *, site_url: str, report_date: str, health_score: int, status: str, payload: dict[str, Any]) -> int:
+        now = datetime.now(UTC).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO assistant_reports(site_url, report_date, created_at, health_score, status, payload_json)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(site_url, report_date) DO UPDATE SET
+                    created_at = excluded.created_at,
+                    health_score = excluded.health_score,
+                    status = excluded.status,
+                    payload_json = excluded.payload_json
+                """,
+                (site_url, report_date, now, health_score, status, json.dumps(payload, ensure_ascii=False)),
+            )
+            row = conn.execute(
+                "SELECT id FROM assistant_reports WHERE site_url = ? AND report_date = ?",
+                (site_url, report_date),
+            ).fetchone()
+            return int(row["id"])
 
     def _latest_payload(self, table: str, site_url: str | None) -> dict[str, Any] | None:
         if table not in {"audits", "technical_audits"}:
@@ -211,6 +264,40 @@ class LocalStorage:
 
     def latest_technical_audit(self, site_url: str | None = None) -> dict[str, Any] | None:
         return self._latest_payload("technical_audits", site_url)
+
+    def latest_assistant_report(self, site_url: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM assistant_reports WHERE site_url = ? ORDER BY report_date DESC, id DESC LIMIT 1",
+                (site_url,),
+            ).fetchone()
+        if not row:
+            return None
+        payload = json.loads(row["payload_json"])
+        payload["report_id"] = row["id"]
+        payload["created_at"] = row["created_at"]
+        return payload
+
+    def assistant_reports(self, limit_per_site: int = 1) -> list[dict[str, Any]]:
+        sites = self.list_monitored_sites()
+        reports: list[dict[str, Any]] = []
+        for site in sites:
+            with self._connect() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM assistant_reports
+                    WHERE site_url = ?
+                    ORDER BY report_date DESC, id DESC
+                    LIMIT ?
+                    """,
+                    (site["site_url"], limit_per_site),
+                ).fetchall()
+            for row in rows:
+                payload = json.loads(row["payload_json"])
+                payload["report_id"] = row["id"]
+                payload["created_at"] = row["created_at"]
+                reports.append(payload)
+        return reports
 
 
 storage = LocalStorage()

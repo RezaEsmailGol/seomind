@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen3:4b"
 
+    daily_check_enabled: bool = True
+    daily_check_hour: int = 9
+    daily_check_interval_minutes: int = 15
+    daily_crawl_pages: int = 25
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_prefix="SEOMIND_",
