@@ -43,6 +43,16 @@ class LocalStorage:
                     row_count INTEGER NOT NULL,
                     payload_json TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS technical_audits (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    site_url TEXT NOT NULL,
+                    start_date TEXT NOT NULL,
+                    end_date TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    page_count INTEGER NOT NULL,
+                    payload_json TEXT NOT NULL
+                );
                 """
             )
 
@@ -151,8 +161,36 @@ class LocalStorage:
             )
             return int(cur.lastrowid)
 
-    def latest_audit(self, site_url: str | None = None) -> dict[str, Any] | None:
-        sql = "SELECT * FROM audits"
+    def save_technical_audit(
+        self,
+        *,
+        site_url: str,
+        start_date: str,
+        end_date: str,
+        page_count: int,
+        payload: dict[str, Any],
+    ) -> int:
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO technical_audits(site_url, start_date, end_date, created_at, page_count, payload_json)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    site_url,
+                    start_date,
+                    end_date,
+                    datetime.now(UTC).isoformat(),
+                    page_count,
+                    json.dumps(payload, ensure_ascii=False),
+                ),
+            )
+            return int(cur.lastrowid)
+
+    def _latest_payload(self, table: str, site_url: str | None) -> dict[str, Any] | None:
+        if table not in {"audits", "technical_audits"}:
+            raise ValueError("Unsupported audit table.")
+        sql = f"SELECT * FROM {table}"
         params: tuple[Any, ...] = ()
         if site_url:
             sql += " WHERE site_url = ?"
@@ -163,9 +201,16 @@ class LocalStorage:
         if not row:
             return None
         payload = json.loads(row["payload_json"])
-        payload["audit_id"] = row["id"]
+        key = "audit_id" if table == "audits" else "technical_audit_id"
+        payload[key] = row["id"]
         payload["created_at"] = row["created_at"]
         return payload
+
+    def latest_audit(self, site_url: str | None = None) -> dict[str, Any] | None:
+        return self._latest_payload("audits", site_url)
+
+    def latest_technical_audit(self, site_url: str | None = None) -> dict[str, Any] | None:
+        return self._latest_payload("technical_audits", site_url)
 
 
 storage = LocalStorage()

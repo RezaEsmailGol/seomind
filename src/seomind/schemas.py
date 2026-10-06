@@ -17,6 +17,12 @@ class ImportRequest(BaseModel):
     max_rows: int = Field(default=50000, ge=1000, le=100000)
 
 
+class TechnicalAuditRequest(BaseModel):
+    days: int = Field(default=28, ge=7, le=180)
+    max_pages: int = Field(default=50, ge=1, le=200)
+    gsc_max_rows: int = Field(default=50000, ge=1000, le=100000)
+
+
 class UrlInspectionRequest(BaseModel):
     url: str = Field(min_length=8, max_length=4096)
     language: str = Field(default="en-US", min_length=2, max_length=20)

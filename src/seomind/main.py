@@ -20,9 +20,11 @@ from seomind.schemas import (
     GoogleCredentialsPayload,
     ImportRequest,
     PropertySelection,
+    TechnicalAuditRequest,
     UrlInspectionRequest,
 )
 from seomind.storage import storage
+from seomind.technical import TechnicalAuditError, technical_auditor
 
 settings.ensure_directories()
 
@@ -241,6 +243,33 @@ def latest_audit() -> dict[str, Any]:
     return audit
 
 
+@app.post("/api/technical-audit")
+async def run_technical_audit(payload: TechnicalAuditRequest) -> dict[str, Any]:
+    site_url = storage.get_setting("selected_property")
+    if not site_url:
+        raise HTTPException(status_code=400, detail="Select a Search Console property first.")
+    try:
+        return await technical_auditor.run(
+            site_url,
+            days=payload.days,
+            max_pages=payload.max_pages,
+            gsc_max_rows=payload.gsc_max_rows,
+        )
+    except GoogleOAuthError as exc:
+        raise _http_error(exc, status_code=401) from exc
+    except (GSCError, TechnicalAuditError) as exc:
+        raise _http_error(exc, status_code=502) from exc
+
+
+@app.get("/api/technical-audits/latest")
+def latest_technical_audit() -> dict[str, Any]:
+    site_url = storage.get_setting("selected_property")
+    audit = storage.latest_technical_audit(site_url=site_url or None)
+    if not audit:
+        raise HTTPException(status_code=404, detail="No technical audit has been run yet.")
+    return audit
+
+
 @app.post("/api/url-inspection")
 async def inspect_url(payload: UrlInspectionRequest) -> dict[str, Any]:
     site_url = storage.get_setting("selected_property")
@@ -261,5 +290,5 @@ async def ai_status() -> dict[str, Any]:
 async def ai_explain(payload: AiExplainRequest) -> dict[str, Any]:
     try:
         return await ollama.explain(payload.opportunity, payload.language, payload.model)
-    except (RuntimeError, httpx.HTTPError) as exc:  # type: ignore[name-defined]
+    except (RuntimeError, httpx.HTTPError) as exc:
         raise _http_error(exc, status_code=502) from exc

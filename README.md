@@ -46,6 +46,11 @@ Your OAuth file, Google token and imported audit data are stored inside your loc
   - Possible query cannibalization
 - ✅ Local audit persistence in SQLite
 - ✅ Google URL Inspection (indexed version)
+- ✅ Technical SEO crawler scoped to the selected Search Console property
+- ✅ Sitemap discovery from `robots.txt`, `sitemap.xml` and sitemap indexes
+- ✅ Title / H1 / Canonical / Meta Description / robots analysis
+- ✅ Query ↔ Content matching with Search Console impressions and ranking data
+- ✅ Technical scoring, issue severity and page-level action views
 - ✅ Optional local explanations via Ollama
 - ✅ Windows, Linux and macOS setup scripts
 - ✅ Docker Compose
@@ -70,7 +75,9 @@ Choose Property
    ↓
 Optional Ollama
    ↓
-Dashboard → Import Audit → Opportunity Queue → URL Inspection
+Dashboard → Import Audit → Opportunity Queue
+          → Technical Crawl → Sitemap → Title/H1/Canonical
+          → Query ↔ Content Match → URL Inspection
 ```
 
 ---
@@ -203,6 +210,44 @@ An LLM can explain this finding, but it does not decide whether the finding exis
 
 ---
 
+## Technical SEO crawler
+
+SeoMind can run a local technical audit against the currently selected Search Console property.
+
+The crawler:
+
+- stays inside the selected **Domain** or **URL-prefix** property
+- discovers Sitemap URLs from `robots.txt`, `/sitemap.xml` and `/sitemap_index.xml`
+- follows sitemap indexes recursively with strict limits
+- respects `robots.txt`
+- checks every redirect target again before following it
+- refuses private, loopback, link-local, reserved and unresolved network targets
+- limits response sizes and crawl concurrency
+- extracts Title, Meta Description, H1, Canonical, meta robots, word count and internal-link count
+- assigns a deterministic technical score per page
+
+For Domain properties, SeoMind can crawl subdomains that belong to that Search Console property. For URL-prefix properties, the crawl remains inside the exact configured prefix.
+
+### Query ↔ Content matching
+
+During a technical audit SeoMind also downloads Search Console rows with the dimensions:
+
+```text
+page + query
+```
+
+For each crawled page it compares real search queries with:
+
+- Title
+- H1
+- visible/indexable page text
+
+The matcher is deterministic and Unicode-aware, including basic Persian text normalization. High-impression queries with weak on-page alignment are surfaced as `query_content_mismatch`.
+
+This analysis does not require an LLM.
+
+---
+
 ## URL Inspection
 
 SeoMind can call Google's URL Inspection API for the selected Search Console property.
@@ -236,7 +281,10 @@ seomind/
 │   ├── storage.py           # SQLite + local secrets
 │   ├── google_oauth.py      # OAuth 2.0 + token refresh
 │   ├── gsc.py               # Search Console + URL Inspection
-│   ├── analyzer.py          # Deterministic opportunity engine
+│   ├── analyzer.py          # Search-performance opportunity engine
+│   ├── crawler.py           # Safe property-scoped crawler + sitemaps
+│   ├── content_match.py     # Query ↔ Title/H1/body scoring
+│   ├── technical.py         # Technical-audit orchestration
 │   ├── ollama.py            # Optional local AI
 │   └── schemas.py
 │
@@ -312,8 +360,9 @@ Then open `http://127.0.0.1:3000`.
 - [x] SQLite audit persistence
 - [x] Ollama explanations
 - [x] URL Inspection
-- [ ] Sitemap reader + crawler
-- [ ] Title / description / H1 / canonical audit
+- [x] Sitemap reader + safe property-scoped crawler
+- [x] Title / description / H1 / canonical audit
+- [x] Search Console Query ↔ Content matching
 - [ ] Query clustering
 - [ ] Export CSV / Markdown / PDF
 - [ ] MCP server
@@ -334,6 +383,11 @@ Then open `http://127.0.0.1:3000`.
 - افت کلیک نسبت به دوره قبل
 - رقابت احتمالی چند صفحه روی یک Query
 - وضعیت URL در نسخه موجود در ایندکس گوگل
+- کشف Sitemap و Crawl امن داخل همان Property
+- بررسی Title، H1، Canonical، Meta Description و robots
+- تطبیق Queryهای واقعی Search Console با Title، H1 و متن صفحه
+
+در ممیزی فنی، SeoMind برای هر صفحه یک امتیاز فنی و یک امتیاز **Query ↔ Content** می‌سازد تا صفحاتی که ایمپرشن دارند ولی محتوای آن‌ها با عبارت‌های جستجو هماهنگ نیست مشخص شوند.
 
 سپس اگر **Ollama** روی سیستم فعال باشد، AI محلی می‌تواند دلیل و اقدام‌های پیشنهادی را به فارسی یا انگلیسی توضیح دهد. اصل تشخیص فرصت‌ها وابسته به AI نیست.
 
