@@ -4,11 +4,8 @@ cd /d "%~dp0"
 
 if not exist .venv\Scripts\pythonw.exe (
   echo SeoMind is not installed. Run setup.bat first.
-  pause
   exit /b 1
 )
 
-call start-tray.bat
-timeout /t 3 /nobreak >nul
-start "" http://127.0.0.1:3000
+start "" ".venv\Scripts\pythonw.exe" -m seomind.tray
 endlocal

@@ -20,6 +20,7 @@ from seomind.gsc import GSCError, gsc
 from seomind.ollama import ollama
 from seomind.schemas import (
     AiExplainRequest,
+    AssistantChatRequest,
     AssistantRunRequest,
     GoogleCredentialsPayload,
     ImportRequest,
@@ -324,6 +325,55 @@ async def run_assistant(payload: AssistantRunRequest) -> dict[str, Any]:
 @app.get("/api/assistant/reports")
 def assistant_reports() -> dict[str, Any]:
     return {"reports": daily_assistant.latest_reports()}
+
+
+@app.post("/api/assistant/chat")
+async def assistant_chat(payload: AssistantChatRequest) -> dict[str, Any]:
+    site_url = payload.site_url or storage.get_setting("selected_property")
+    if not site_url:
+        raise HTTPException(status_code=400, detail="Select a Search Console property first.")
+
+    report = storage.latest_assistant_report(site_url)
+    performance = storage.latest_audit(site_url)
+    technical = storage.latest_technical_audit(site_url)
+    if not report and not performance and not technical:
+        raise HTTPException(status_code=400, detail="Run at least one SeoMind audit before asking the assistant.")
+
+    technical_context: dict[str, Any] = {}
+    if technical:
+        technical_context = {
+            "summary": technical.get("summary", {}),
+            "worst_pages": [
+                {
+                    "url": page.get("url"),
+                    "technical_score": page.get("technical_score"),
+                    "content_match_score": page.get("content_match_score"),
+                    "issues": page.get("issues", [])[:5],
+                    "query_matches": page.get("query_matches", [])[:3],
+                }
+                for page in technical.get("pages", [])[:8]
+            ],
+        }
+
+    context = {
+        "site_url": site_url,
+        "latest_daily_report": report,
+        "performance": {
+            "period": performance.get("period") if performance else None,
+            "summary": performance.get("summary") if performance else None,
+            "top_opportunities": performance.get("opportunities", [])[:8] if performance else [],
+        },
+        "technical": technical_context,
+    }
+
+    try:
+        return await ollama.assistant_chat(
+            context=context,
+            question=payload.message,
+            language=payload.language,
+        )
+    except (RuntimeError, httpx.HTTPError) as exc:
+        raise _http_error(exc, status_code=502) from exc
 
 
 @app.post("/api/url-inspection")

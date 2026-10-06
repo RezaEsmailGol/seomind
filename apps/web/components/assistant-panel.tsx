@@ -12,8 +12,10 @@ import {
   Clock3,
   Lightbulb,
   Loader2,
+  MessageCircle,
   RefreshCw,
   Rocket,
+  Send,
   ShieldCheck,
   Sparkles,
   Target,
@@ -38,6 +40,11 @@ const copy = {
     focus: "Today's focus",
     sites: "Monitored sites",
     lastCheck: "Last check",
+    askTitle: "Ask SeoMind",
+    askPlaceholder: "Why did clicks drop? What should I improve today?",
+    askButton: "Ask local AI",
+    evidence: "Evidence",
+    actions: "Suggested actions",
     scores: { growing: "Growing", stable: "Stable", attention: "Needs attention", critical: "Critical", error: "Check failed" },
   },
   fa: {
@@ -55,6 +62,11 @@ const copy = {
     focus: "تمرکز امروز",
     sites: "سایت‌های تحت‌نظر",
     lastCheck: "آخرین بررسی",
+    askTitle: "از SeoMind بپرس",
+    askPlaceholder: "چرا کلیک افت کرده؟ امروز روی کدام صفحه کار کنم؟",
+    askButton: "پرسش از AI محلی",
+    evidence: "شواهد",
+    actions: "اقدام‌های پیشنهادی",
     scores: { growing: "در حال رشد", stable: "پایدار", attention: "نیازمند توجه", critical: "بحرانی", error: "خطای بررسی" },
   },
 } as const;
@@ -78,6 +90,9 @@ export default function AssistantPanel({ lang, selectedSite, aiAvailable }: { la
   const [running, setRunning] = useState(false);
   const [open, setOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [question, setQuestion] = useState("");
+  const [asking, setAsking] = useState(false);
+  const [answer, setAnswer] = useState<{ answer: string; evidence: string[]; actions: string[]; confidence: string; model?: string } | null>(null);
 
   async function load() {
     try { setState(await api.assistantStatus()); setError(null); }
@@ -93,6 +108,15 @@ export default function AssistantPanel({ lang, selectedSite, aiAvailable }: { la
       await load();
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setRunning(false); }
+  }
+
+  async function askSeoMind() {
+    if (!question.trim() || !aiAvailable) return;
+    setAsking(true); setError(null);
+    try {
+      setAnswer(await api.assistantAsk(question.trim(), lang, selectedSite || undefined));
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setAsking(false); }
   }
 
   const report = useMemo(() => {
@@ -183,6 +207,32 @@ export default function AssistantPanel({ lang, selectedSite, aiAvailable }: { la
             )}
           </div>
         )}
+
+        <div className="mt-6 rounded-2xl border border-sky-400/15 bg-sky-400/[0.045] p-4 md:p-5">
+          <div className="flex items-center gap-2 text-sm font-black text-sky-100"><MessageCircle className="h-4 w-4 text-sky-300" />{t.askTitle}</div>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <input
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && askSeoMind()}
+              disabled={!aiAvailable}
+              placeholder={t.askPlaceholder}
+              className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-950/45 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-sky-400/35 disabled:opacity-50"
+            />
+            <button onClick={askSeoMind} disabled={!aiAvailable || asking || !question.trim()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-300 px-4 py-3 text-xs font-black text-slate-950 transition hover:bg-sky-200 disabled:opacity-40">
+              {asking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}{t.askButton}
+            </button>
+          </div>
+          {!aiAvailable && <div className="mt-2 text-[11px] text-slate-600">Ollama is required for Ask SeoMind.</div>}
+          {answer && (
+            <div className="mt-4 rounded-xl border border-white/[0.07] bg-slate-950/35 p-4">
+              <p className="text-sm leading-7 text-slate-200">{answer.answer}</p>
+              {!!answer.evidence?.length && <div className="mt-4"><div className="text-[10px] font-black uppercase tracking-[.14em] text-slate-600">{t.evidence}</div><ul className="mt-2 space-y-1.5 text-xs leading-6 text-slate-400">{answer.evidence.map((item, i) => <li key={i}>• {item}</li>)}</ul></div>}
+              {!!answer.actions?.length && <div className="mt-4"><div className="text-[10px] font-black uppercase tracking-[.14em] text-slate-600">{t.actions}</div><ol className="mt-2 space-y-2 text-xs leading-6 text-sky-100/80">{answer.actions.map((item, i) => <li key={i}><span className="mr-2 text-violet-300">{i + 1}.</span>{item}</li>)}</ol></div>}
+              <div className="mt-3 text-[10px] text-slate-600">{answer.model || "Ollama"} · confidence: {answer.confidence}</div>
+            </div>
+          )}
+        </div>
 
         {!!state?.sites.length && (
           <div className="mt-5 border-t border-white/[0.06] pt-4">

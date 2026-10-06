@@ -97,5 +97,41 @@ Input facts:
         parsed.setdefault("focus_today", [])
         return parsed
 
+    async def assistant_chat(
+        self,
+        *,
+        context: dict[str, Any],
+        question: str,
+        language: str = "en",
+        model: str | None = None,
+    ) -> dict[str, Any]:
+        language_name = "Persian (Farsi)" if language == "fa" else "English"
+        prompt = f"""
+You are SeoMind Local Assistant, a private SEO copilot.
+Answer the user's question only from the supplied local SEO context.
+Never invent rankings, traffic, Search Console metrics, crawl errors, competitors, or completed actions.
+When a cause is uncertain, say it is a hypothesis.
+Prefer concrete page/query evidence and actionable next steps.
+Write in {language_name}.
+
+Return strict JSON with:
+answer: string
+evidence: array of up to 5 short strings
+actions: array of up to 5 short strings
+confidence: high|medium|low
+
+Local context:
+{json.dumps(context, ensure_ascii=False)}
+
+User question:
+{question}
+""".strip()
+        parsed = await self._json_chat(prompt, model)
+        parsed.setdefault("answer", parsed.get("summary", ""))
+        parsed.setdefault("evidence", [])
+        parsed.setdefault("actions", [])
+        parsed.setdefault("confidence", "medium")
+        return parsed
+
 
 ollama = OllamaClient()

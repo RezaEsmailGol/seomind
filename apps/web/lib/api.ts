@@ -101,6 +101,14 @@ export type AssistantReport = {
   facts?: Record<string, unknown>;
   created_at?: string;
 };
+export type AssistantChatResponse = {
+  answer: string;
+  evidence: string[];
+  actions: string[];
+  confidence: "high" | "medium" | "low" | string;
+  model?: string;
+};
+
 export type AssistantStatus = {
   enabled: boolean;
   daily_hour: number;
@@ -179,6 +187,11 @@ export const api = {
     request<{ reports: AssistantReport[] }>("/api/assistant/run", {
       method: "POST",
       body: JSON.stringify({ language, site_url: site_url || null }),
+    }),
+  assistantAsk: (message: string, language: "en" | "fa", site_url?: string) =>
+    request<AssistantChatResponse>("/api/assistant/chat", {
+      method: "POST",
+      body: JSON.stringify({ message, language, site_url: site_url || null }),
     }),
   updateMonitoredSite: (site_url: string, enabled: boolean, label = "") =>
     request<{ sites: AssistantStatus["sites"] }>("/api/assistant/sites", {
