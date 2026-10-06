@@ -23,6 +23,17 @@ class TechnicalAuditRequest(BaseModel):
     gsc_max_rows: int = Field(default=50000, ge=1000, le=100000)
 
 
+class AssistantRunRequest(BaseModel):
+    site_url: str | None = Field(default=None, max_length=2048)
+    language: Literal["en", "fa"] = "en"
+
+
+class MonitoredSiteUpdate(BaseModel):
+    site_url: str = Field(min_length=3, max_length=2048)
+    enabled: bool = True
+    label: str = Field(default="", max_length=120)
+
+
 class UrlInspectionRequest(BaseModel):
     url: str = Field(min_length=8, max_length=4096)
     language: str = Field(default="en-US", min_length=2, max_length=20)

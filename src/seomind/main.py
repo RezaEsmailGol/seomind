@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager, suppress
 from datetime import date, timedelta
 from typing import Any
 from urllib.parse import urlencode
@@ -11,14 +13,17 @@ from fastapi.responses import RedirectResponse
 
 from seomind import __version__
 from seomind.analyzer import analyze_opportunities, build_summary, trend_points
+from seomind.assistant import AssistantError, daily_assistant
 from seomind.config import settings
 from seomind.google_oauth import GoogleOAuthError, google_oauth
 from seomind.gsc import GSCError, gsc
 from seomind.ollama import ollama
 from seomind.schemas import (
     AiExplainRequest,
+    AssistantRunRequest,
     GoogleCredentialsPayload,
     ImportRequest,
+    MonitoredSiteUpdate,
     PropertySelection,
     TechnicalAuditRequest,
     UrlInspectionRequest,
@@ -28,10 +33,26 @@ from seomind.technical import TechnicalAuditError, technical_auditor
 
 settings.ensure_directories()
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = None
+    if settings.daily_check_enabled:
+        task = asyncio.create_task(daily_assistant.scheduler_loop())
+    try:
+        yield
+    finally:
+        if task:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+
+
 app = FastAPI(
     title="SeoMind API",
     version=__version__,
     description="Local-first AI SEO intelligence for Google Search Console.",
+    lifespan=lifespan,
 )
 
 allowed_origins = {
@@ -157,6 +178,7 @@ async def properties() -> dict[str, Any]:
 @app.post("/api/google/property")
 def select_property(payload: PropertySelection) -> dict[str, str]:
     storage.set_setting("selected_property", payload.site_url)
+    storage.upsert_monitored_site(payload.site_url)
     return {"site_url": payload.site_url}
 
 
@@ -268,6 +290,40 @@ def latest_technical_audit() -> dict[str, Any]:
     if not audit:
         raise HTTPException(status_code=404, detail="No technical audit has been run yet.")
     return audit
+
+
+@app.get("/api/assistant/status")
+def assistant_status() -> dict[str, Any]:
+    return {
+        "enabled": settings.daily_check_enabled,
+        "daily_hour": settings.daily_check_hour,
+        "daily_language": settings.daily_language,
+        "daily_crawl_pages": settings.daily_crawl_pages,
+        "sites": storage.list_monitored_sites(),
+        "reports": daily_assistant.latest_reports(),
+    }
+
+
+@app.post("/api/assistant/sites")
+def update_monitored_site(payload: MonitoredSiteUpdate) -> dict[str, Any]:
+    storage.upsert_monitored_site(payload.site_url, label=payload.label, enabled=payload.enabled)
+    return {"sites": storage.list_monitored_sites()}
+
+
+@app.post("/api/assistant/run")
+async def run_assistant(payload: AssistantRunRequest) -> dict[str, Any]:
+    try:
+        if payload.site_url:
+            storage.upsert_monitored_site(payload.site_url)
+            return {"reports": [await daily_assistant.check_site(payload.site_url, language=payload.language)]}
+        return {"reports": await daily_assistant.check_all(language=payload.language)}
+    except AssistantError as exc:
+        raise _http_error(exc, status_code=502) from exc
+
+
+@app.get("/api/assistant/reports")
+def assistant_reports() -> dict[str, Any]:
+    return {"reports": daily_assistant.latest_reports()}
 
 
 @app.post("/api/url-inspection")

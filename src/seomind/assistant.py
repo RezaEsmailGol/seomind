@@ -6,6 +6,7 @@ from typing import Any
 
 from seomind.analyzer import analyze_opportunities, build_summary
 from seomind.config import settings
+from seomind.google_oauth import GoogleOAuthError
 from seomind.gsc import GSCError, SearchConsoleClient, gsc
 from seomind.ollama import OllamaClient, ollama
 from seomind.storage import LocalStorage, storage
@@ -215,7 +216,7 @@ class DailyAssistant:
                     max_pages=settings.daily_crawl_pages,
                     gsc_max_rows=20000,
                 )
-            except (GSCError, TechnicalAuditError) as exc:
+            except (GoogleOAuthError, GSCError, TechnicalAuditError) as exc:
                 raise AssistantError(str(exc)) from exc
 
             summary = build_summary(

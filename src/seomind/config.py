@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     daily_check_hour: int = 9
     daily_check_interval_minutes: int = 15
     daily_crawl_pages: int = 25
+    daily_language: str = "en"
 
     model_config = SettingsConfigDict(
         env_file=".env",

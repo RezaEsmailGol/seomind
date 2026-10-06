@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Bot, CalendarDays, Database, Loader2, RefreshCw, Search, ShieldCheck } from "lucide-react";
 import { api, type Audit, type SetupStatus } from "@/lib/api";
 import type { Copy, Lang } from "@/lib/i18n";
+import AssistantPanel from "./assistant-panel";
 import OpportunityCard from "./opportunity-card";
 import StatCard from "./stat-card";
 import TechnicalAuditPanel from "./technical-audit";
@@ -73,6 +74,8 @@ export default function Dashboard({ lang, copy, status }: { lang: Lang; copy: Co
       </div>
 
       {error && <div className="mb-5 rounded-2xl border border-rose-400/20 bg-rose-400/10 p-4 text-sm text-rose-200">{error}</div>}
+
+      <AssistantPanel lang={lang} selectedSite={status.selected_property} aiAvailable={status.ollama.available} />
 
       {loading ? (
         <div className="flex min-h-[440px] items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-sky-300" /></div>

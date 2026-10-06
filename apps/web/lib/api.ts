@@ -80,6 +80,36 @@ export type TechnicalPage = {
   issues: TechnicalIssue[];
 };
 
+export type AssistantAlert = { title: string; evidence: string; priority: "high" | "medium" | "low" | string };
+export type AssistantIdea = { title: string; evidence: string; action: string; confidence: "high" | "medium" | "low" | string };
+export type AssistantReport = {
+  report_id?: number;
+  site_url: string;
+  report_date: string;
+  health_score: number;
+  status: "growing" | "stable" | "attention" | "critical" | "error" | string;
+  error?: string;
+  brief: {
+    headline: string;
+    summary: string;
+    alerts: AssistantAlert[];
+    growth_ideas: AssistantIdea[];
+    focus_today: string[];
+    source: "ollama" | "deterministic" | "system" | string;
+    model?: string;
+  };
+  facts?: Record<string, unknown>;
+  created_at?: string;
+};
+export type AssistantStatus = {
+  enabled: boolean;
+  daily_hour: number;
+  daily_language: string;
+  daily_crawl_pages: number;
+  sites: Array<{ site_url: string; label: string; enabled: boolean; created_at: string; updated_at: string }>;
+  reports: AssistantReport[];
+};
+
 export type TechnicalAudit = {
   technical_audit_id: number;
   site_url: string;
@@ -143,6 +173,17 @@ export const api = {
     request<Audit>("/api/import/search-console", {
       method: "POST",
       body: JSON.stringify({ days: 28, row_limit: 25000, max_rows: 50000 }),
+    }),
+  assistantStatus: () => request<AssistantStatus>("/api/assistant/status"),
+  assistantRun: (language: "en" | "fa", site_url?: string) =>
+    request<{ reports: AssistantReport[] }>("/api/assistant/run", {
+      method: "POST",
+      body: JSON.stringify({ language, site_url: site_url || null }),
+    }),
+  updateMonitoredSite: (site_url: string, enabled: boolean, label = "") =>
+    request<{ sites: AssistantStatus["sites"] }>("/api/assistant/sites", {
+      method: "POST",
+      body: JSON.stringify({ site_url, enabled, label }),
     }),
   latestTechnicalAudit: () => request<TechnicalAudit>("/api/technical-audits/latest"),
   technicalAudit: (max_pages = 50) =>
