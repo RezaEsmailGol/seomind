@@ -1,57 +1,87 @@
 @echo off
-setlocal
+setlocal EnableExtensions
+cd /d "%~dp0"
 
 echo.
-echo ==========================================
+echo =====================================================
 echo   SeoMind Setup - Windows
-echo ==========================================
+echo =====================================================
 echo.
 
 where py >nul 2>nul
 if %errorlevel%==0 (
-    set PYTHON=py -3
+  set "PYTHON=py -3"
 ) else (
-    where python >nul 2>nul
-    if not %errorlevel%==0 (
-        echo [ERROR] Python 3.11 or newer was not found.
-        echo Install Python from https://www.python.org/downloads/
-        echo Make sure "Add Python to PATH" is enabled.
-        pause
-        exit /b 1
-    )
-    set PYTHON=python
-)
-
-echo [1/4] Checking Python...
-%PYTHON% -c "import sys; raise SystemExit(0 if sys.version_info >= (3,11) else 1)"
-if not %errorlevel%==0 (
-    echo [ERROR] SeoMind requires Python 3.11 or newer.
+  where python >nul 2>nul
+  if not %errorlevel%==0 (
+    echo [ERROR] Python 3.11+ was not found.
+    echo Install it from https://www.python.org/downloads/
+    echo Then run setup.bat again.
     pause
     exit /b 1
+  )
+  set "PYTHON=python"
 )
 
-echo [2/4] Creating virtual environment...
-if not exist .venv (
-    %PYTHON% -m venv .venv
+where node >nul 2>nul
+if not %errorlevel%==0 (
+  echo [ERROR] Node.js 20+ was not found.
+  echo Install the current Node.js LTS release, then run setup.bat again.
+  pause
+  exit /b 1
 )
 
-echo [3/4] Installing SeoMind...
+where npm >nul 2>nul
+if not %errorlevel%==0 (
+  echo [ERROR] npm was not found.
+  pause
+  exit /b 1
+)
+
+echo [1/6] Checking Python...
+%PYTHON% -c "import sys; raise SystemExit(0 if sys.version_info >= (3,11) else 1)"
+if not %errorlevel%==0 (
+  echo [ERROR] SeoMind requires Python 3.11 or newer.
+  pause
+  exit /b 1
+)
+
+echo [2/6] Checking Node.js...
+node -e "const m=Number(process.versions.node.split('.')[0]); process.exit(m >= 20 ? 0 : 1)"
+if not %errorlevel%==0 (
+  echo [ERROR] SeoMind requires Node.js 20 or newer.
+  pause
+  exit /b 1
+)
+
+echo [3/6] Creating Python environment...
+if not exist .venv %PYTHON% -m venv .venv
 call .venv\Scripts\python.exe -m pip install --upgrade pip
 if not %errorlevel%==0 exit /b 1
-
 call .venv\Scripts\python.exe -m pip install -e .
 if not %errorlevel%==0 exit /b 1
 
-if not exist .env (
-    copy .env.example .env >nul
+if not exist .env copy .env.example .env >nul
+
+echo [4/6] Installing web interface...
+pushd apps\web
+if not exist .env.local copy .env.local.example .env.local >nul
+call npm install
+if not %errorlevel%==0 (
+  popd
+  exit /b 1
 )
 
-echo [4/4] Starting SeoMind...
-echo.
-echo SeoMind:  http://127.0.0.1:8787
-echo API docs: http://127.0.0.1:8787/docs
-echo.
-start "" http://127.0.0.1:8787/docs
-call .venv\Scripts\seomind.exe
+echo [5/6] Building web interface...
+call npm run build
+if not %errorlevel%==0 (
+  popd
+  exit /b 1
+)
+popd
 
+echo [6/6] Setup complete.
+echo.
+echo Starting SeoMind...
+call run.bat
 endlocal

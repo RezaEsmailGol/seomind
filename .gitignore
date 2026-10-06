@@ -8,10 +8,18 @@ dist/
 build/
 *.egg-info/
 
+# Node / Next
+node_modules/
+.next/
+apps/web/node_modules/
+apps/web/.next/
+apps/web/.env.local
+
 # Local configuration
 .env
 .env.*
 !.env.example
+!apps/web/.env.local.example
 
 # Google OAuth / tokens
 client_secret*.json

@@ -1,15 +1,32 @@
 services:
-  seomind:
-    build: .
-    container_name: seomind
-    ports:
-      - "8787:8787"
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
     environment:
       SEOMIND_HOST: 0.0.0.0
       SEOMIND_PORT: 8787
       SEOMIND_DATA_DIR: /data
+      SEOMIND_FRONTEND_URL: http://127.0.0.1:3000
+      SEOMIND_OAUTH_REDIRECT_URI: http://127.0.0.1:8787/api/google/oauth/callback
+      SEOMIND_OLLAMA_BASE_URL: http://host.docker.internal:11434
+    ports:
+      - "8787:8787"
     volumes:
       - seomind-data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_URL: http://127.0.0.1:8787
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
     restart: unless-stopped
 
 volumes:

@@ -1,51 +1,89 @@
-# SeoMind
+<div align="center">
 
-**Local-first AI SEO intelligence for Google Search Console.**
+# 🧠 SeoMind
 
-SeoMind is an open-source Python project that connects to Google Search Console, analyzes search performance locally, detects SEO opportunities with deterministic rules, and optionally uses a local LLM through Ollama to explain findings and recommend actions.
+### Local-first AI SEO intelligence for Google Search Console
 
-> Goal: go from zero to your first AI-powered Search Console audit through one guided setup flow.
+**Search Console data → deterministic opportunities → optional local AI explanations**
 
-## Why SeoMind?
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-15-000000?style=flat-square&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
+[![Ollama](https://img.shields.io/badge/Ollama-Local_AI-111827?style=flat-square)](https://ollama.com/)
+[![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](LICENSE)
 
-Most SEO dashboards show charts. SeoMind is designed to answer questions and surface actions:
+**English** · [فارسی](#فارسی)
 
-- Which pages are losing clicks?
-- Which queries have high impressions but weak CTR?
-- Which pages rank between positions 4–20 and have realistic growth potential?
-- Are multiple pages competing for the same query?
-- Which URLs should be inspected first?
-- What changed between the current and previous period?
-- Why did organic traffic drop?
+</div>
 
-## Core principles
+---
 
-- **Local-first** — your SEO data can stay on your machine.
-- **Deterministic analysis first** — opportunity detection is testable and not dependent on an LLM.
-- **AI as an explanation layer** — use Ollama locally, or optionally connect another provider later.
-- **Simple installation** — Windows, Linux and macOS setup scripts.
-- **Open source** — transparent code and extensible architecture.
+## What is SeoMind?
 
-## Planned stack
+SeoMind is an open-source, local-first SEO application that connects to **Google Search Console**, imports your search-performance data and turns it into a prioritized action queue.
 
-- Python 3.11+
-- FastAPI
-- Google Search Console API
-- OAuth 2.0
-- SQLite
-- Pandas / Polars
-- Ollama
-- React / Next.js dashboard
-- Docker
-- MCP server (planned)
+It is deliberately built with two layers:
 
-## Current status
+1. **Deterministic SEO engine** — testable rules detect opportunities and declines.
+2. **Optional local AI layer** — Ollama explains findings and suggests actions without making the core detection dependent on an LLM.
 
-**Early development / v0.1 bootstrap**
+Your OAuth file, Google token and imported audit data are stored inside your local `.seomind` directory and are ignored by Git.
 
-The current repository contains the installable Python/FastAPI foundation. Google OAuth, Search Console import, the Opportunity Engine and the graphical setup wizard are the next milestones.
+## Current features
 
-## Quick start
+- ✅ Bilingual interface: **English / فارسی** with RTL support
+- ✅ Modern local dashboard with **Lucide icons**
+- ✅ Guided setup wizard
+- ✅ Google OAuth 2.0 with **read-only Search Console scope**
+- ✅ Search Console property discovery and selection
+- ✅ 28-day import with previous-period comparison
+- ✅ Clicks / Impressions / CTR / Average Position
+- ✅ Search-performance trend chart
+- ✅ Deterministic Opportunity Engine
+  - High impressions + low CTR
+  - Ranking “striking distance” (positions 4–20)
+  - Click decay vs previous period
+  - Possible query cannibalization
+- ✅ Local audit persistence in SQLite
+- ✅ Google URL Inspection (indexed version)
+- ✅ Optional local explanations via Ollama
+- ✅ Windows, Linux and macOS setup scripts
+- ✅ Docker Compose
+- ✅ Backend test suite and GitHub Actions CI
+
+> Search Console APIs can return top rows rather than every possible data row. SeoMind surfaces this limitation instead of pretending the imported dataset is exhaustive.
+
+---
+
+## Screens / flow
+
+```text
+Welcome
+   ↓
+System Check
+   ↓
+Google OAuth JSON
+   ↓
+Google Sign-in (read-only Search Console)
+   ↓
+Choose Property
+   ↓
+Optional Ollama
+   ↓
+Dashboard → Import Audit → Opportunity Queue → URL Inspection
+```
+
+---
+
+## Quick installation
+
+### Requirements
+
+- Python **3.11+**
+- Node.js **20+**
+- Git
+- A Google account with access to at least one Search Console property
+- Optional: Ollama for local AI explanations
 
 ### Windows
 
@@ -60,114 +98,272 @@ setup.bat
 ```bash
 git clone https://github.com/RezaEsmailGol/seomind.git
 cd seomind
-chmod +x setup.sh
+chmod +x setup.sh run.sh
 ./setup.sh
 ```
 
-Then open:
+After installation:
+
+- UI: `http://127.0.0.1:3000`
+- API: `http://127.0.0.1:8787`
+- API docs: `http://127.0.0.1:8787/docs`
+
+Later launches:
 
 ```text
-http://127.0.0.1:8787
+Windows: run.bat
+Linux/macOS: ./run.sh
 ```
 
-Health check:
+---
+
+## Google Search Console setup
+
+SeoMind does **not** ship with anyone's Google credentials. Every user creates their own OAuth client.
+
+1. Open **Google Cloud Console**.
+2. Create or select a project.
+3. Enable **Google Search Console API**.
+4. Configure the OAuth consent screen if Google asks for it.
+5. Create an OAuth 2.0 Client ID of type **Web application**.
+6. Add this exact Authorized redirect URI:
 
 ```text
-http://127.0.0.1:8787/health
+http://127.0.0.1:8787/api/google/oauth/callback
 ```
 
-API docs:
+7. Download the OAuth JSON file.
+8. Open SeoMind and upload that JSON in the setup wizard.
+9. Click **Continue with Google**.
+
+SeoMind requests only:
 
 ```text
-http://127.0.0.1:8787/docs
+https://www.googleapis.com/auth/webmasters.readonly
 ```
 
-## Planned setup wizard
+That permission allows SeoMind to view Search Console data for sites your account can already access. It does not grant write access.
 
-SeoMind will guide users through:
+### OAuth data location
 
-1. Environment check
-2. Google Cloud / Search Console credentials
-3. Google OAuth connection
-4. Search Console property selection
-5. AI engine selection
-6. First data import and audit
+Local secrets are written under:
 
-## Roadmap
+```text
+.seomind/
+├── google_client_secret.json
+├── google_token.json
+└── seomind.db
+```
 
-### v0.1 — Foundation
-- [x] Public repository
-- [x] Python project structure
-- [x] FastAPI bootstrap
-- [x] Windows setup script
-- [x] Linux/macOS setup script
-- [x] Local health/status endpoints
-- [ ] Setup wizard UI
+Never commit this directory.
 
-### v0.2 — Google Search Console
-- [ ] Google OAuth 2.0
-- [ ] Property listing
-- [ ] Search Analytics import
-- [ ] Date/device/country/query/page dimensions
-- [ ] Local data storage
+---
 
-### v0.3 — Opportunity Engine
-- [ ] High-impression / low-CTR detector
-- [ ] Position 4–20 opportunity detector
-- [ ] Click/impression decay detector
-- [ ] Cannibalization detector
-- [ ] Period comparison
-- [ ] Opportunity scoring
+## Optional local AI with Ollama
 
-### v0.4 — Local AI
-- [ ] Ollama detection
-- [ ] Guided model installation
-- [ ] Local explanation layer
-- [ ] Ask-your-SEO-data chat
+The SEO engine does not need an LLM. Ollama is only used for human-friendly explanations.
 
-### v0.5 — Technical SEO
-- [ ] URL Inspection integration
-- [ ] Sitemap reader
-- [ ] Local crawler
-- [ ] Title / description / H1 / canonical / robots analysis
+Install Ollama, then pull a small model, for example:
 
-### Later
-- [ ] MCP server
-- [ ] Docker one-command install
-- [ ] Windows installer
-- [ ] Export to CSV / Markdown / PDF
-- [ ] Multi-property workspaces
+```bash
+ollama pull qwen3:4b
+```
+
+Keep Ollama running on its default address:
+
+```text
+http://127.0.0.1:11434
+```
+
+SeoMind automatically detects installed models. If the configured model is not installed, it uses the first local model reported by Ollama.
+
+---
+
+## Opportunity Engine
+
+SeoMind intentionally keeps detection separate from AI.
+
+Example deterministic finding:
+
+```text
+Query: odoo developer
+Page:  https://example.com/odoo
+Position: 8.4
+Impressions: 4,820
+CTR: 1.2%
+
+Finding:
+High impressions + page-one visibility + low CTR
+
+Opportunity Score:
+87 / 100
+```
+
+An LLM can explain this finding, but it does not decide whether the finding exists.
+
+---
+
+## URL Inspection
+
+SeoMind can call Google's URL Inspection API for the selected Search Console property.
+
+It reports Google's indexed-version information such as:
+
+- verdict
+- coverage state
+- indexing state
+- page fetch state
+- robots.txt state
+- last crawl time
+
+This is **not** a live URL test.
+
+---
 
 ## Architecture
 
 ```text
 seomind/
+├── apps/
+│   └── web/                 # Next.js + Tailwind + Lucide
+│       ├── app/
+│       ├── components/
+│       └── lib/
+│
 ├── src/seomind/
-│   ├── main.py
-│   ├── config.py
-│   ├── api/
-│   ├── gsc/
-│   ├── analyzer/
-│   ├── ai/
-│   └── storage/
+│   ├── main.py              # FastAPI routes
+│   ├── config.py            # Local configuration
+│   ├── storage.py           # SQLite + local secrets
+│   ├── google_oauth.py      # OAuth 2.0 + token refresh
+│   ├── gsc.py               # Search Console + URL Inspection
+│   ├── analyzer.py          # Deterministic opportunity engine
+│   ├── ollama.py            # Optional local AI
+│   └── schemas.py
+│
 ├── tests/
-├── setup.bat
-├── setup.sh
-├── pyproject.toml
-└── .env.example
+├── setup.bat / setup.sh
+├── run.bat / run.sh
+├── Dockerfile
+└── docker-compose.yml
 ```
 
-## Privacy
+---
 
-SeoMind is designed so that Google credentials, Search Console exports and local AI prompts do not need to leave the user's computer.
+## Development
 
-Never commit Google OAuth secrets or generated tokens to Git.
+Backend:
 
-## فارسی
+```bash
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# Linux/macOS: source .venv/bin/activate
+pip install -e ".[dev]"
+seomind
+```
 
-**SeoMind** یک ابزار متن‌باز و Local-first برای تحلیل Google Search Console با Python و AI است.
+Frontend:
 
-هدف پروژه این است که کاربر بدون درگیرشدن با تنظیمات پیچیده، مرحله‌به‌مرحله Search Console را متصل کند، داده‌ها را روی سیستم خودش تحلیل کند و فرصت‌های واقعی سئو را ببیند. هسته تحلیل وابسته به هوش مصنوعی نخواهد بود؛ AI برای توضیح بهتر یافته‌ها و پیشنهاد اقدام استفاده می‌شود.
+```bash
+cd apps/web
+cp .env.local.example .env.local
+npm install
+npm run dev
+```
+
+Tests:
+
+```bash
+pytest -q
+```
+
+---
+
+## Docker
+
+```bash
+docker compose up --build
+```
+
+Then open `http://127.0.0.1:3000`.
+
+> When the API runs in Docker and Ollama runs on the host, SeoMind uses `host.docker.internal:11434`.
+
+---
+
+## Privacy & security design
+
+- Search Console permission is **read-only**.
+- Google OAuth state is validated before token exchange.
+- OAuth and token files are stored locally with restricted file permissions where supported.
+- Secrets and `.seomind/` are ignored by Git.
+- Core SEO detection is local and deterministic.
+- Ollama is optional; no cloud LLM is required.
+- SeoMind never needs to upload your Search Console dataset to a third-party AI provider.
+
+---
+
+## Roadmap
+
+- [x] Local-first FastAPI backend
+- [x] Bilingual Next.js UI
+- [x] Google OAuth + property selection
+- [x] Search Analytics import
+- [x] Opportunity Engine
+- [x] SQLite audit persistence
+- [x] Ollama explanations
+- [x] URL Inspection
+- [ ] Sitemap reader + crawler
+- [ ] Title / description / H1 / canonical audit
+- [ ] Query clustering
+- [ ] Export CSV / Markdown / PDF
+- [ ] MCP server
+- [ ] Signed desktop installer
+
+---
+
+<a id="فارسی"></a>
+
+## 🇮🇷 معرفی فارسی
+
+**SeoMind** یک ابزار متن‌باز برای تحلیل Google Search Console با تمرکز بر **حریم خصوصی، اجرای محلی و هوش مصنوعی اختیاری** است.
+
+هدف این پروژه فقط نمایش نمودار نیست. SeoMind داده Search Console را دریافت می‌کند و با یک موتور تحلیلی قابل‌تست، مواردی مثل این‌ها را پیدا می‌کند:
+
+- صفحات یا Queryهای دارای ایمپرشن بالا و CTR پایین
+- رتبه‌های ۴ تا ۲۰ که شانس رشد دارند
+- افت کلیک نسبت به دوره قبل
+- رقابت احتمالی چند صفحه روی یک Query
+- وضعیت URL در نسخه موجود در ایندکس گوگل
+
+سپس اگر **Ollama** روی سیستم فعال باشد، AI محلی می‌تواند دلیل و اقدام‌های پیشنهادی را به فارسی یا انگلیسی توضیح دهد. اصل تشخیص فرصت‌ها وابسته به AI نیست.
+
+### نصب در ویندوز
+
+```bat
+git clone https://github.com/RezaEsmailGol/seomind.git
+cd seomind
+setup.bat
+```
+
+پس از نصب، مرورگر را روی این آدرس باز کنید:
+
+```text
+http://127.0.0.1:3000
+```
+
+رابط برنامه از داخل خود SeoMind بین **فارسی و انگلیسی** تغییر می‌کند و در حالت فارسی RTL است.
+
+### اتصال گوگل
+
+در Google Cloud یک OAuth Client از نوع **Web application** بسازید و Redirect URI زیر را ثبت کنید:
+
+```text
+http://127.0.0.1:8787/api/google/oauth/callback
+```
+
+فایل JSON را دانلود و در Wizard برنامه انتخاب کنید. دسترسی درخواستی فقط خواندنی است.
+
+---
 
 ## Author
 

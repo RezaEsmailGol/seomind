@@ -7,7 +7,11 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8787
     data_dir: Path = Path(".seomind")
+    frontend_url: str = "http://127.0.0.1:3000"
+    oauth_redirect_uri: str = "http://127.0.0.1:8787/api/google/oauth/callback"
     log_level: str = "info"
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "qwen3:4b"
 
     model_config = SettingsConfigDict(
         env_file=".env",
