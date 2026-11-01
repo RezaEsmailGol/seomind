@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Bot, CalendarDays, Database, Loader2, RefreshCw, Search, ShieldCheck } from "lucide-react";
+import { Bot, CalendarDays, Database, FileUp, Loader2, RefreshCw, Search, ShieldCheck } from "lucide-react";
 import { api, type Audit, type SetupStatus } from "@/lib/api";
 import type { Copy, Lang } from "@/lib/i18n";
 import AssistantPanel from "./assistant-panel";
@@ -27,6 +27,20 @@ export default function Dashboard({ lang, copy, status }: { lang: Lang; copy: Co
   useEffect(() => {
     api.latestAudit().then(setAudit).catch(() => setAudit(null)).finally(() => setLoading(false));
   }, []);
+
+  async function importOfflineFile(file?: File) {
+    if (!file || !status.selected_property) return;
+    setImporting(true);
+    setError(null);
+    try {
+      const result = await api.offlineImport(status.selected_property, file);
+      setAudit(result.audit);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setImporting(false);
+    }
+  }
 
   async function runAudit() {
     setImporting(true);
@@ -63,19 +77,28 @@ export default function Dashboard({ lang, copy, status }: { lang: Lang; copy: Co
               {copy.selectedProperty}
             </span>
             <span className="text-xs text-slate-500">{status.selected_property}</span>
+            {status.privacy_mode && <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-bold text-emerald-200">Privacy Mode · Manual import</span>}
           </div>
           <h1 className="mt-3 text-3xl font-black tracking-tight md:text-4xl">{copy.dashboard}</h1>
           <p className="mt-2 text-sm text-slate-500">{audit ? `${audit.period.start} → ${audit.period.end}` : copy.noAudit}</p>
         </div>
-        <button onClick={runAudit} disabled={importing} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-cyan-300 px-5 py-3 text-sm font-black text-slate-950 transition hover:brightness-110 disabled:opacity-60">
-          {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          {importing ? copy.importing : copy.importAudit}
-        </button>
+        {status.privacy_mode ? (
+          <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-300 to-cyan-300 px-5 py-3 text-sm font-black text-slate-950 transition hover:brightness-110">
+            {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
+            {importing ? (lang === "fa" ? "در حال Import…" : "Importing…") : (lang === "fa" ? "Import فایل جدید" : "Import newer export")}
+            <input type="file" accept=".csv,.xlsx,.zip" className="hidden" disabled={importing} onChange={(e) => importOfflineFile(e.target.files?.[0])} />
+          </label>
+        ) : (
+          <button onClick={runAudit} disabled={importing} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-cyan-300 px-5 py-3 text-sm font-black text-slate-950 transition hover:brightness-110 disabled:opacity-60">
+            {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            {importing ? copy.importing : copy.importAudit}
+          </button>
+        )}
       </div>
 
       {error && <div className="mb-5 rounded-2xl border border-rose-400/20 bg-rose-400/10 p-4 text-sm text-rose-200">{error}</div>}
 
-      <AssistantPanel lang={lang} selectedSite={status.selected_property} aiAvailable={status.ollama.available} />
+      <AssistantPanel lang={lang} selectedSite={status.selected_property} aiAvailable={status.ollama.available} privacyMode={Boolean(status.privacy_mode)} />
 
       {loading ? (
         <div className="flex min-h-[440px] items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-sky-300" /></div>
@@ -130,9 +153,17 @@ export default function Dashboard({ lang, copy, status }: { lang: Lang; copy: Co
 
           <TechnicalAuditPanel lang={lang} />
 
-          <div className="mt-7">
-            <UrlInspector lang={lang} title={copy.inspectTitle} body={copy.inspectBody} placeholder={copy.inspectPlaceholder} button={copy.inspectButton} />
-          </div>
+          {status.privacy_mode ? (
+            <div className="mt-7 rounded-2xl border border-amber-400/15 bg-amber-400/[0.05] p-5 text-sm leading-7 text-slate-500">
+              {lang === "fa"
+                ? "URL Inspection به اتصال مستقیم Google نیاز دارد. در Privacy Mode، Crawl و ممیزی فنی همچنان به‌صورت محلی قابل اجرا هستند."
+                : "URL Inspection requires a direct Google connection. Local crawling and technical audits remain available in Privacy Mode."}
+            </div>
+          ) : (
+            <div className="mt-7">
+              <UrlInspector lang={lang} title={copy.inspectTitle} body={copy.inspectBody} placeholder={copy.inspectPlaceholder} button={copy.inspectButton} />
+            </div>
+          )}
         </>
       )}
     </div>

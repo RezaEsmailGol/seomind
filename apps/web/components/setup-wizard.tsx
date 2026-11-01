@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   CloudCog,
   FileJson2,
+  FileSpreadsheet,
   Gauge,
   HardDrive,
   KeyRound,
@@ -20,6 +21,8 @@ import {
   ServerCog,
   ShieldCheck,
   Sparkles,
+  UploadCloud,
+  WifiOff,
 } from "lucide-react";
 import { API_URL, api, type PropertyItem, type SetupStatus } from "@/lib/api";
 import type { Copy, Lang } from "@/lib/i18n";
@@ -34,6 +37,10 @@ export default function SetupWizard({ lang, copy, status, refresh, onComplete }:
   const [error, setError] = useState<string | null>(null);
   const [savedCredentials, setSavedCredentials] = useState(status.steps.google_credentials);
   const [redirectUri, setRedirectUri] = useState("http://127.0.0.1:8787/api/google/oauth/callback");
+  const [dataMode, setDataMode] = useState<"choose" | "google" | "offline">("choose");
+  const [offlineSite, setOfflineSite] = useState("");
+  const [offlineFile, setOfflineFile] = useState<File | null>(null);
+  const [offlineResult, setOfflineResult] = useState<string | null>(null);
 
   useEffect(() => {
     if (status.ready) setStep(5);
@@ -62,6 +69,19 @@ export default function SetupWizard({ lang, copy, status, refresh, onComplete }:
     } finally { setLoading(false); }
   }
 
+  async function importOffline() {
+    if (!offlineFile || !offlineSite.trim()) return;
+    setLoading(true); setError(null); setOfflineResult(null);
+    try {
+      const result = await api.offlineImport(offlineSite.trim(), offlineFile);
+      const names = result.datasets.map((item) => `${item.name} (${item.count})`).join(" · ");
+      setOfflineResult(names || (lang === "fa" ? "فایل با موفقیت وارد شد." : "Import completed."));
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally { setLoading(false); }
+  }
+
   async function loadProperties() {
     setLoading(true); setError(null);
     try { setProperties((await api.properties()).items); }
@@ -82,7 +102,7 @@ export default function SetupWizard({ lang, copy, status, refresh, onComplete }:
   const systemRows = [
     { icon: ServerCog, title: "FastAPI", ok: status.steps.runtime, optional: false },
     { icon: HardDrive, title: lang === "fa" ? "ذخیره‌سازی محلی" : "Local storage", ok: status.steps.local_storage, optional: false },
-    { icon: ShieldCheck, title: lang === "fa" ? "فایل OAuth" : "OAuth credentials", ok: status.steps.google_credentials, optional: false },
+    { icon: ShieldCheck, title: status.privacy_mode ? (lang === "fa" ? "Privacy Mode" : "Privacy Mode") : (lang === "fa" ? "فایل OAuth" : "OAuth credentials"), ok: status.privacy_mode || status.steps.google_credentials, optional: status.privacy_mode },
     { icon: Bot, title: "Ollama", ok: status.ollama.available, optional: true },
   ];
 
@@ -144,12 +164,76 @@ export default function SetupWizard({ lang, copy, status, refresh, onComplete }:
 
             {step === 2 && (
               <div>
-                <h2 className="text-2xl font-black">{copy.googleTitle}</h2><p className="mt-2 max-w-3xl leading-7 text-slate-400">{copy.googleBody}</p>
-                <div className="mt-6 rounded-2xl border border-white/[0.07] bg-slate-950/30 p-5">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-400/10"><FileJson2 className="h-5 w-5 text-sky-300" /></div><div><div className="font-bold">client_secret.json</div><div className="mt-1 text-xs text-slate-500">{savedCredentials ? copy.jsonSaved : copy.chooseJson}</div></div></div><label className="cursor-pointer rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-center text-sm font-bold text-slate-200 transition hover:bg-white/[0.07]"><input type="file" accept="application/json,.json" className="hidden" onChange={(e) => readCredentials(e.target.files?.[0])} />{loading ? "…" : copy.chooseJson}</label></div>
-                  <div className="mt-5 rounded-xl border border-amber-400/15 bg-amber-400/[0.06] p-4"><div className="text-xs font-bold uppercase tracking-wider text-amber-200">{copy.redirectUri}</div><code className="mt-2 block break-all text-xs text-slate-400">{redirectUri}</code></div>
-                </div>
-                <button disabled={!savedCredentials} onClick={() => { window.location.href = `${API_URL}/api/google/oauth/start`; }} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-cyan-300 px-5 py-3 text-sm font-black text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"><CloudCog className="h-4 w-4" />{copy.connectGoogle}</button>
+                <h2 className="text-2xl font-black">{lang === "fa" ? "منبع داده Search Console" : "Search Console data source"}</h2>
+                <p className="mt-2 max-w-3xl leading-7 text-slate-400">
+                  {lang === "fa"
+                    ? "برای شروع یکی از دو روش را انتخاب کنید. Privacy Mode به Google Cloud و OAuth نیاز ندارد."
+                    : "Choose how SeoMind should receive Search Console data. Privacy Mode works without Google Cloud or OAuth."}
+                </p>
+
+                {dataMode === "choose" && (
+                  <div className="mt-6 grid gap-4 md:grid-cols-2">
+                    <button onClick={() => setDataMode("google")} className="group rounded-2xl border border-sky-400/15 bg-sky-400/[0.06] p-5 text-start transition hover:border-sky-300/35 hover:bg-sky-400/[0.10]">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-400/10"><CloudCog className="h-6 w-6 text-sky-300" /></div>
+                      <div className="mt-4 text-lg font-black">{lang === "fa" ? "اتصال مستقیم به Google" : "Connect directly to Google"}</div>
+                      <p className="mt-2 text-sm leading-6 text-slate-500">{lang === "fa" ? "برای Sync خودکار روزانه، بررسی همیشه‌فعال و دریافت داده تازه." : "Best for automatic daily sync, always-on monitoring and fresh data."}</p>
+                      <div className="mt-4 text-xs font-bold text-sky-300">{lang === "fa" ? "نیازمند OAuth" : "Requires OAuth"} →</div>
+                    </button>
+
+                    <button onClick={() => setDataMode("offline")} className="group rounded-2xl border border-emerald-400/15 bg-emerald-400/[0.06] p-5 text-start transition hover:border-emerald-300/35 hover:bg-emerald-400/[0.10]">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-400/10"><WifiOff className="h-6 w-6 text-emerald-300" /></div>
+                      <div className="mt-4 flex items-center gap-2 text-lg font-black"><span>{lang === "fa" ? "Privacy Mode" : "Privacy Mode"}</span><span className="rounded-full bg-emerald-400/10 px-2 py-1 text-[10px] text-emerald-300">{lang === "fa" ? "بدون OAuth" : "No OAuth"}</span></div>
+                      <p className="mt-2 text-sm leading-6 text-slate-500">{lang === "fa" ? "فایل CSV، Excel یا ZIP خروجی Search Console را وارد کنید. همه تحلیل‌ها روی سیستم شما می‌ماند." : "Import a Search Console CSV, Excel or ZIP export. Analysis stays on your computer."}</p>
+                      <div className="mt-4 text-xs font-bold text-emerald-300">{lang === "fa" ? "شروع سریع و خصوصی" : "Fast & private"} →</div>
+                    </button>
+                  </div>
+                )}
+
+                {dataMode === "google" && (
+                  <div>
+                    <button onClick={() => setDataMode("choose")} className="mt-5 text-xs font-bold text-slate-500 hover:text-white">← {lang === "fa" ? "تغییر روش" : "Change method"}</button>
+                    <h3 className="mt-4 text-xl font-black">{copy.googleTitle}</h3>
+                    <p className="mt-2 max-w-3xl leading-7 text-slate-400">{copy.googleBody}</p>
+                    <div className="mt-6 rounded-2xl border border-white/[0.07] bg-slate-950/30 p-5">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-400/10"><FileJson2 className="h-5 w-5 text-sky-300" /></div><div><div className="font-bold">client_secret.json</div><div className="mt-1 text-xs text-slate-500">{savedCredentials ? copy.jsonSaved : copy.chooseJson}</div></div></div><label className="cursor-pointer rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-center text-sm font-bold text-slate-200 transition hover:bg-white/[0.07]"><input type="file" accept="application/json,.json" className="hidden" onChange={(e) => readCredentials(e.target.files?.[0])} />{loading ? "…" : copy.chooseJson}</label></div>
+                      <div className="mt-5 rounded-xl border border-amber-400/15 bg-amber-400/[0.06] p-4"><div className="text-xs font-bold uppercase tracking-wider text-amber-200">{copy.redirectUri}</div><code className="mt-2 block break-all text-xs text-slate-400">{redirectUri}</code></div>
+                    </div>
+                    <button disabled={!savedCredentials} onClick={() => { window.location.href = `${API_URL}/api/google/oauth/start`; }} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-cyan-300 px-5 py-3 text-sm font-black text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"><CloudCog className="h-4 w-4" />{copy.connectGoogle}</button>
+                  </div>
+                )}
+
+                {dataMode === "offline" && (
+                  <div>
+                    <button onClick={() => setDataMode("choose")} className="mt-5 text-xs font-bold text-slate-500 hover:text-white">← {lang === "fa" ? "تغییر روش" : "Change method"}</button>
+                    <div className="mt-4 rounded-2xl border border-emerald-400/15 bg-emerald-400/[0.055] p-5">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-400/10"><FileSpreadsheet className="h-5 w-5 text-emerald-300" /></div>
+                        <div><div className="font-black">{lang === "fa" ? "Import خروجی Search Console" : "Import Search Console export"}</div><p className="mt-1 text-xs leading-6 text-slate-500">{lang === "fa" ? "فرمت‌های CSV، XLSX و ZIP پشتیبانی می‌شوند. فایل به هیچ سرویس ابری ارسال نمی‌شود." : "CSV, XLSX and ZIP are supported. The file is not sent to any cloud AI service."}</p></div>
+                      </div>
+
+                      <label className="mt-5 block text-xs font-bold text-slate-400">{lang === "fa" ? "آدرس سایت / Property" : "Site / Property URL"}</label>
+                      <input value={offlineSite} onChange={(e) => setOfflineSite(e.target.value)} placeholder="https://example.com/" className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950/45 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-emerald-400/35" />
+
+                      <label className="mt-4 flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-dashed border-white/15 bg-slate-950/30 p-4 transition hover:border-emerald-400/30">
+                        <div className="flex items-center gap-3"><UploadCloud className="h-5 w-5 text-emerald-300" /><div><div className="text-sm font-bold text-slate-200">{offlineFile?.name || (lang === "fa" ? "انتخاب فایل Search Console" : "Choose Search Console export")}</div><div className="mt-1 text-[11px] text-slate-600">CSV · XLSX · ZIP · max 25 MB</div></div></div>
+                        <input type="file" accept=".csv,.xlsx,.zip,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip" className="hidden" onChange={(e) => setOfflineFile(e.target.files?.[0] || null)} />
+                      </label>
+
+                      {offlineResult && <div className="mt-4 rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-xs leading-6 text-emerald-200">✓ {offlineResult}</div>}
+
+                      <button onClick={importOffline} disabled={loading || !offlineFile || !offlineSite.trim()} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-emerald-300 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-40">
+                        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                        {loading ? (lang === "fa" ? "در حال تحلیل فایل…" : "Analyzing export…") : (lang === "fa" ? "Import و شروع تحلیل" : "Import & analyze")}
+                      </button>
+                    </div>
+
+                    <div className="mt-4 rounded-xl border border-amber-400/15 bg-amber-400/[0.05] p-4 text-xs leading-6 text-slate-500">
+                      {lang === "fa"
+                        ? "در Privacy Mode، Dashboard، Opportunity Engine، Crawl، ممیزی فنی و Ask SeoMind کار می‌کنند. فقط Sync خودکار روزانه Google و URL Inspection نیازمند اتصال مستقیم هستند."
+                        : "Privacy Mode supports Dashboard, Opportunity Engine, crawler, technical audit and Ask SeoMind. Automatic Google sync and URL Inspection still require a direct connection."}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -177,7 +261,7 @@ export default function SetupWizard({ lang, copy, status, refresh, onComplete }:
             {step === 5 && (
               <div className="py-5 text-center">
                 <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[26px] border border-emerald-400/20 bg-emerald-400/10"><Check className="h-10 w-10 text-emerald-300" /></div>
-                <h2 className="mt-6 text-3xl font-black">{copy.finishTitle}</h2><p className="mx-auto mt-3 max-w-2xl leading-7 text-slate-400">{copy.finishBody}</p>
+                <h2 className="mt-6 text-3xl font-black">{copy.finishTitle}</h2><p className="mx-auto mt-3 max-w-2xl leading-7 text-slate-400">{status.privacy_mode ? (lang === "fa" ? "Privacy Mode فعال است. داده Search Console از فایل محلی خوانده می‌شود و می‌توانید Dashboard، Crawl، Opportunity Engine و AI محلی را استفاده کنید." : "Privacy Mode is active. Search Console data comes from your local export and Dashboard, crawler, Opportunity Engine and local AI are ready.") : copy.finishBody}</p>
                 <button onClick={onComplete} className="mt-7 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 to-emerald-300 px-6 py-3 text-sm font-black text-slate-950 hover:brightness-110"><Gauge className="h-4 w-4" />{copy.done}</button>
               </div>
             )}
@@ -193,8 +277,8 @@ export default function SetupWizard({ lang, copy, status, refresh, onComplete }:
         <aside className="space-y-4">
           <div className="glass rounded-3xl p-5"><div className="text-xs font-bold uppercase tracking-[.18em] text-slate-500">{lang === "fa" ? "وضعیت راه‌اندازی" : "Setup status"}</div><div className="mt-4 space-y-3">{[
             [lang === "fa" ? "سیستم" : "System", status.steps.runtime],
-            ["OAuth", status.steps.google_oauth],
-            [lang === "fa" ? "پراپرتی" : "Property", status.steps.search_console],
+            [status.privacy_mode ? "Privacy" : "OAuth", status.privacy_mode || status.steps.google_oauth],
+            [lang === "fa" ? "سایت" : "Site", status.steps.search_console],
             ["Ollama", status.ollama.available],
           ].map(([label, ok]) => <div key={String(label)} className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.05] bg-white/[0.025] px-3 py-3"><span className="text-sm font-semibold text-slate-300">{String(label)}</span><StatusPill ok={Boolean(ok)} label={Boolean(ok) ? copy.ready : String(label) === "Ollama" ? copy.optional : copy.notConnected} /></div>)}</div></div>
           <div className="rounded-3xl border border-violet-400/15 bg-gradient-to-br from-violet-400/[0.08] to-sky-400/[0.04] p-5"><Sparkles className="h-5 w-5 text-violet-300" /><div className="mt-4 text-sm font-black">{lang === "fa" ? "AI تصمیم‌گیر نیست" : "AI is not the decision engine"}</div><p className="mt-2 text-xs leading-6 text-slate-500">{lang === "fa" ? "یافته‌های SeoMind با قوانین قابل‌تست ساخته می‌شوند. LLM فقط برای توضیح بهتر استفاده می‌شود." : "SeoMind finds issues with testable rules. The LLM is only an optional explanation layer."}</p></div>

@@ -73,6 +73,17 @@ class LocalStorage:
                     UNIQUE(site_url, report_date)
                 );
 
+                CREATE TABLE IF NOT EXISTS offline_imports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    site_url TEXT NOT NULL,
+                    source_file TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    payload_json TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_offline_imports_site
+                ON offline_imports(site_url, id DESC);
+
                 CREATE INDEX IF NOT EXISTS idx_assistant_reports_site_date
                 ON assistant_reports(site_url, report_date DESC);
                 """
@@ -218,6 +229,41 @@ class LocalStorage:
                 (site_url, start_date, end_date, datetime.now(UTC).isoformat(), page_count, json.dumps(payload, ensure_ascii=False)),
             )
             return int(cur.lastrowid)
+
+    def save_offline_import(self, *, site_url: str, source_file: str, payload: dict[str, Any]) -> int:
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO offline_imports(site_url, source_file, created_at, payload_json)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    site_url,
+                    source_file,
+                    datetime.now(UTC).isoformat(),
+                    json.dumps(payload, ensure_ascii=False),
+                ),
+            )
+            return int(cur.lastrowid)
+
+    def latest_offline_import(self, site_url: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM offline_imports
+                WHERE site_url = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (site_url,),
+            ).fetchone()
+        if not row:
+            return None
+        payload = json.loads(row["payload_json"])
+        payload["offline_import_id"] = row["id"]
+        payload["source_file"] = row["source_file"]
+        payload["created_at"] = row["created_at"]
+        return payload
 
     def save_assistant_report(self, *, site_url: str, report_date: str, health_score: int, status: str, payload: dict[str, Any]) -> int:
         now = datetime.now(UTC).isoformat()

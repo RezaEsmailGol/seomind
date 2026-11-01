@@ -7,7 +7,7 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
@@ -17,6 +17,7 @@ from seomind.assistant import AssistantError, daily_assistant
 from seomind.config import settings
 from seomind.google_oauth import GoogleOAuthError, google_oauth
 from seomind.gsc import GSCError, gsc
+from seomind.offline_import import OfflineImportError, build_offline_audit, parse_upload
 from seomind.ollama import ollama
 from seomind.schemas import (
     AiExplainRequest,
@@ -94,15 +95,20 @@ def health() -> dict[str, Any]:
 async def setup_status() -> dict[str, Any]:
     ollama_state = await ollama.status()
     selected_property = storage.get_setting("selected_property", "") or ""
+    data_source = storage.get_setting("data_source", "google") or "google"
+    privacy_mode = data_source == "offline"
     steps = {
         "runtime": True,
         "local_storage": storage.db_path.exists(),
         "google_credentials": storage.credentials_path.exists(),
         "google_oauth": storage.token_path.exists(),
         "search_console": bool(selected_property),
+        "privacy_mode": privacy_mode,
         "ollama": bool(ollama_state.get("available")),
     }
-    if not steps["google_credentials"]:
+    if privacy_mode and selected_property:
+        next_step = "ready"
+    elif not steps["google_credentials"]:
         next_step = "google_credentials"
     elif not steps["google_oauth"]:
         next_step = "google_oauth"
@@ -111,10 +117,17 @@ async def setup_status() -> dict[str, Any]:
     else:
         next_step = "ready"
     return {
-        "ready": all([steps["runtime"], steps["local_storage"], steps["google_oauth"], steps["search_console"]]),
+        "ready": bool(
+            steps["runtime"]
+            and steps["local_storage"]
+            and steps["search_console"]
+            and (steps["google_oauth"] or privacy_mode)
+        ),
         "steps": steps,
         "next": next_step,
         "selected_property": selected_property or None,
+        "data_source": data_source,
+        "privacy_mode": privacy_mode,
         "ollama": ollama_state,
     }
 
@@ -179,8 +192,59 @@ async def properties() -> dict[str, Any]:
 @app.post("/api/google/property")
 def select_property(payload: PropertySelection) -> dict[str, str]:
     storage.set_setting("selected_property", payload.site_url)
+    storage.set_setting("data_source", "google")
     storage.upsert_monitored_site(payload.site_url)
     return {"site_url": payload.site_url}
+
+
+@app.post("/api/offline/import")
+async def import_offline_search_console(
+    site_url: str = Form(...),
+    file: UploadFile = File(...),
+) -> dict[str, Any]:
+    site_url = site_url.strip()
+    if not (
+        site_url.startswith("https://")
+        or site_url.startswith("http://")
+        or site_url.startswith("sc-domain:")
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Site URL must start with https://, http://, or sc-domain:.",
+        )
+
+    filename = file.filename or "search-console-export"
+    payload = await file.read()
+    try:
+        parsed = parse_upload(filename, payload)
+        audit = build_offline_audit(site_url, parsed)
+    except OfflineImportError as exc:
+        raise _http_error(exc) from exc
+
+    storage.set_setting("selected_property", site_url)
+    storage.set_setting("data_source", "offline")
+    storage.upsert_monitored_site(site_url, enabled=False)
+    import_id = storage.save_offline_import(
+        site_url=site_url,
+        source_file=filename,
+        payload=parsed,
+    )
+    audit_id = storage.save_audit(
+        site_url=site_url,
+        start_date=audit["period"].get("start", ""),
+        end_date=audit["period"].get("end", ""),
+        row_count=int(audit.get("rows_analyzed", 0)),
+        payload=audit,
+    )
+    audit["audit_id"] = audit_id
+    return {
+        "ok": True,
+        "data_source": "offline",
+        "offline_import_id": import_id,
+        "audit": audit,
+        "capabilities": audit.get("import_capabilities", {}),
+        "datasets": parsed.get("datasets", []),
+    }
 
 
 @app.post("/api/import/search-console")
@@ -230,6 +294,8 @@ async def import_search_console(payload: ImportRequest) -> dict[str, Any]:
     except (GoogleOAuthError, GSCError) as exc:
         raise _http_error(exc, status_code=502) from exc
 
+    storage.set_setting("data_source", "google")
+
     result: dict[str, Any] = {
         "site_url": site_url,
         "period": {"start": start.isoformat(), "end": end.isoformat(), "days": payload.days},
@@ -271,6 +337,20 @@ async def run_technical_audit(payload: TechnicalAuditRequest) -> dict[str, Any]:
     site_url = storage.get_setting("selected_property")
     if not site_url:
         raise HTTPException(status_code=400, detail="Select a Search Console property first.")
+
+    if storage.get_setting("data_source", "google") == "offline":
+        imported = storage.latest_offline_import(site_url)
+        if not imported:
+            raise HTTPException(status_code=400, detail="Import a Search Console file first.")
+        try:
+            return await technical_auditor.run_offline(
+                site_url,
+                imported=imported,
+                max_pages=payload.max_pages,
+            )
+        except TechnicalAuditError as exc:
+            raise _http_error(exc, status_code=502) from exc
+
     try:
         return await technical_auditor.run(
             site_url,
@@ -300,6 +380,8 @@ def assistant_status() -> dict[str, Any]:
         "daily_hour": settings.daily_check_hour,
         "daily_language": settings.daily_language,
         "daily_crawl_pages": settings.daily_crawl_pages,
+        "data_source": storage.get_setting("data_source", "google"),
+        "privacy_mode": storage.get_setting("data_source", "google") == "offline",
         "sites": storage.list_monitored_sites(),
         "reports": daily_assistant.latest_reports(),
     }
@@ -314,6 +396,19 @@ def update_monitored_site(payload: MonitoredSiteUpdate) -> dict[str, Any]:
 @app.post("/api/assistant/run")
 async def run_assistant(payload: AssistantRunRequest) -> dict[str, Any]:
     try:
+        site_url = payload.site_url or storage.get_setting("selected_property")
+        if storage.get_setting("data_source", "google") == "offline":
+            if not site_url:
+                raise AssistantError("Import a Search Console export first.")
+            return {
+                "reports": [
+                    await daily_assistant.check_site_offline(
+                        site_url,
+                        language=payload.language,
+                    )
+                ]
+            }
+
         if payload.site_url:
             storage.upsert_monitored_site(payload.site_url)
             return {"reports": [await daily_assistant.check_site(payload.site_url, language=payload.language)]}
@@ -378,6 +473,11 @@ async def assistant_chat(payload: AssistantChatRequest) -> dict[str, Any]:
 
 @app.post("/api/url-inspection")
 async def inspect_url(payload: UrlInspectionRequest) -> dict[str, Any]:
+    if storage.get_setting("data_source", "google") == "offline":
+        raise HTTPException(
+            status_code=400,
+            detail="URL Inspection requires a direct Google Search Console connection.",
+        )
     site_url = storage.get_setting("selected_property")
     if not site_url:
         raise HTTPException(status_code=400, detail="Select a Search Console property first.")

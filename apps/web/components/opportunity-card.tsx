@@ -34,9 +34,13 @@ export default function OpportunityCard({ item, lang, labels, reason, aiAvailabl
             <span className="rounded-full border border-violet-400/20 bg-violet-400/10 px-2.5 py-1 text-xs font-bold text-violet-200">{item.score}/100</span>
           </div>
           <h3 className="truncate text-base font-bold text-white" title={item.query}>{item.query || "—"}</h3>
-          <a href={item.page} target="_blank" rel="noreferrer" className="mt-1 flex max-w-xl items-center gap-1.5 truncate text-xs text-slate-500 hover:text-sky-300">
-            <span className="truncate">{item.page}</span><ExternalLink className="h-3 w-3 shrink-0" />
-          </a>
+          {item.page ? (
+            <a href={item.page} target="_blank" rel="noreferrer" className="mt-1 flex max-w-xl items-center gap-1.5 truncate text-xs text-slate-500 hover:text-sky-300">
+              <span className="truncate">{item.page}</span><ExternalLink className="h-3 w-3 shrink-0" />
+            </a>
+          ) : (
+            <div className="mt-1 text-xs text-slate-600">{lang === "fa" ? "Query در سطح Property — نگاشت دقیق صفحه در این Export موجود نیست" : "Property-level query — this export has no exact Query → Page mapping"}</div>
+          )}
         </div>
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-lg font-black text-sky-200">{item.score}</div>
       </div>

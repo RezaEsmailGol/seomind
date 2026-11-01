@@ -279,6 +279,84 @@ class DailyAssistant:
             report["report_id"] = report_id
             return report
 
+    async def check_site_offline(self, site_url: str, *, language: str = "en") -> dict[str, Any]:
+        async with self._lock:
+            performance = self.store.latest_audit(site_url)
+            if not performance:
+                raise AssistantError("Import a Search Console export before running the assistant.")
+
+            technical = self.store.latest_technical_audit(site_url)
+            if not technical:
+                imported = self.store.latest_offline_import(site_url)
+                if imported:
+                    try:
+                        technical = await self.technical.run_offline(
+                            site_url,
+                            imported=imported,
+                            max_pages=settings.daily_crawl_pages,
+                        )
+                    except TechnicalAuditError:
+                        technical = {"summary": {}, "pages": []}
+                else:
+                    technical = {"summary": {}, "pages": []}
+
+            summary = performance.get("summary", {})
+            opportunities = performance.get("opportunities", [])
+            health_score, status = _classify_health(summary, technical, opportunities)
+
+            facts = {
+                "site_url": site_url,
+                "data_source": "offline_import",
+                "search_console": summary,
+                "technical_summary": technical.get("summary", {}),
+                "top_opportunities": opportunities[:8],
+                "top_query_content_mismatches": [
+                    {
+                        "url": page.get("url"),
+                        "score": page.get("content_match_score"),
+                        "queries": page.get("query_matches", [])[:3],
+                    }
+                    for page in technical.get("pages", [])
+                    if page.get("content_match_score") is not None and int(page.get("content_match_score", 100)) < 50
+                ][:5],
+                "health_score": health_score,
+                "status": status,
+            }
+
+            brief = _deterministic_brief(
+                site_url=site_url,
+                summary=summary,
+                technical=technical,
+                opportunities=opportunities,
+            )
+            ai_state = await self.ollama.status()
+            if ai_state.get("available") and ai_state.get("models"):
+                try:
+                    ai_brief = await self.ollama.daily_brief(facts, language=language)
+                    if ai_brief.get("summary"):
+                        brief = {**brief, **ai_brief, "source": "ollama"}
+                except RuntimeError:
+                    pass
+
+            report = {
+                "site_url": site_url,
+                "report_date": date.today().isoformat(),
+                "health_score": health_score,
+                "status": status,
+                "facts": facts,
+                "brief": brief,
+                "data_freshness": "manual_import",
+            }
+            report_id = self.store.save_assistant_report(
+                site_url=site_url,
+                report_date=report["report_date"],
+                health_score=health_score,
+                status=status,
+                payload=report,
+            )
+            report["report_id"] = report_id
+            return report
+
     async def check_all(self, *, language: str = "en") -> list[dict[str, Any]]:
         sites = self.store.list_monitored_sites(enabled_only=True)
         reports = []

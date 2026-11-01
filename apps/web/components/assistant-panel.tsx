@@ -84,7 +84,7 @@ function priorityClass(priority: string) {
   return "text-sky-300";
 }
 
-export default function AssistantPanel({ lang, selectedSite, aiAvailable }: { lang: Lang; selectedSite: string | null; aiAvailable: boolean }) {
+export default function AssistantPanel({ lang, selectedSite, aiAvailable, privacyMode = false }: { lang: Lang; selectedSite: string | null; aiAvailable: boolean; privacyMode?: boolean }) {
   const t = copy[lang];
   const [state, setState] = useState<AssistantStatus | null>(null);
   const [running, setRunning] = useState(false);
@@ -140,9 +140,13 @@ export default function AssistantPanel({ lang, selectedSite, aiAvailable }: { la
                   <Bot className="h-3.5 w-3.5" />{t.local}
                 </span>
               </div>
-              <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-400">{t.subtitle}</p>
+              <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-400">
+                {privacyMode
+                  ? (lang === "fa" ? "دستیار از آخرین فایل Import‌شده، Crawl محلی و ممیزی فنی استفاده می‌کند. برای داده تازه کافی است Export جدید را Import کنید." : "The assistant uses your latest imported Search Console file, local crawl and technical audit. Import a newer export whenever you want fresher data.")
+                  : t.subtitle}
+              </p>
               <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
-                <span className="inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" />{t.auto}: {String(state?.daily_hour ?? 9).padStart(2, "0")}:00</span>
+                <span className="inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" />{privacyMode ? (lang === "fa" ? "داده Search Console: Import دستی" : "Search Console data: manual import") : `${t.auto}: ${String(state?.daily_hour ?? 9).padStart(2, "0")}:00`}</span>
                 <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" />{aiAvailable ? t.sourceAI : t.sourceRules}</span>
               </div>
             </div>

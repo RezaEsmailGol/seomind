@@ -4,6 +4,8 @@ export type SetupStatus = {
   ready: boolean;
   next: string;
   selected_property: string | null;
+  data_source?: "google" | "offline" | string;
+  privacy_mode?: boolean;
   steps: Record<string, boolean>;
   ollama: { available: boolean; models: string[]; error?: string };
 };
@@ -34,6 +36,14 @@ export type Audit = {
   opportunities: Opportunity[];
   rows_analyzed: number;
   data_note?: string;
+  source?: "google" | "offline_import" | string;
+  import_capabilities?: {
+    trend: boolean;
+    page_metrics: boolean;
+    query_metrics: boolean;
+    query_page_mapping: boolean;
+  };
+  datasets?: Array<{ name: string; kind: string; count: number }>;
   created_at?: string;
 };
 
@@ -114,6 +124,8 @@ export type AssistantStatus = {
   daily_hour: number;
   daily_language: string;
   daily_crawl_pages: number;
+  data_source?: "google" | "offline" | string;
+  privacy_mode?: boolean;
   sites: Array<{ site_url: string; label: string; enabled: boolean; created_at: string; updated_at: string }>;
   reports: AssistantReport[];
 };
@@ -144,12 +156,15 @@ export type TechnicalAudit = {
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-    },
+    headers: isFormData
+      ? { ...(init?.headers || {}) }
+      : {
+          "Content-Type": "application/json",
+          ...(init?.headers || {}),
+        },
     cache: "no-store",
   });
   if (!response.ok) {
@@ -177,6 +192,19 @@ export const api = {
       body: JSON.stringify({ site_url }),
     }),
   latestAudit: () => request<Audit>("/api/audits/latest"),
+  offlineImport: (site_url: string, file: File) => {
+    const form = new FormData();
+    form.append("site_url", site_url);
+    form.append("file", file);
+    return request<{
+      ok: boolean;
+      data_source: "offline";
+      offline_import_id: number;
+      audit: Audit;
+      capabilities: Audit["import_capabilities"];
+      datasets: Array<{ name: string; kind: string; count: number }>;
+    }>("/api/offline/import", { method: "POST", body: form });
+  },
   importAudit: () =>
     request<Audit>("/api/import/search-console", {
       method: "POST",

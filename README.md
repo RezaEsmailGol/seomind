@@ -44,6 +44,9 @@ Your OAuth file, Google token and imported audit data are stored inside your loc
 - ✅ Bilingual interface: **English / فارسی** with RTL support
 - ✅ Modern local dashboard with **Lucide icons**
 - ✅ Guided setup wizard
+- ✅ **Privacy Mode** — use Search Console CSV/XLSX/ZIP exports with no OAuth or Google Cloud setup
+- ✅ Offline Search Console importer with local-only parsing
+- ✅ Automatic detection of Queries / Pages / Dates / Query+Page datasets
 - ✅ Google OAuth 2.0 with **read-only Search Console scope**
 - ✅ Search Console property discovery and selection
 - ✅ 28-day import with previous-period comparison
@@ -77,11 +80,9 @@ Welcome
    ↓
 System Check
    ↓
-Google OAuth JSON
-   ↓
-Google Sign-in (read-only Search Console)
-   ↓
-Choose Property
+Choose data source
+   ├── Direct Google OAuth → Choose Property
+   └── Privacy Mode → Import CSV / XLSX / ZIP
    ↓
 Optional Ollama
    ↓
@@ -161,6 +162,52 @@ To enable it again:
 ```bat
 install-startup.bat
 ```
+
+---
+
+## Privacy Mode — no OAuth required
+
+SeoMind can now be used without connecting a Google account.
+
+In the setup wizard choose **Privacy Mode**, enter the Search Console property URL and import an export from Search Console.
+
+Supported formats:
+
+```text
+.csv
+.xlsx
+.zip   (Search Console CSV export bundle)
+```
+
+SeoMind detects common Search Console datasets such as:
+
+- Queries
+- Pages
+- Dates
+- detailed Query + Page tables
+
+The imported file stays on the local machine. SeoMind creates the performance dashboard, deterministic opportunities and a local audit from the file.
+
+### What works in Privacy Mode
+
+- Dashboard metrics
+- Search-performance trend when a Dates dataset is present
+- Query opportunity detection
+- Technical crawler and Sitemap discovery
+- Title / H1 / Canonical audit
+- Local AI explanations
+- Ask SeoMind
+- Manual assistant health check
+
+### What still requires direct Google OAuth
+
+- automatic fresh Search Console sync every day
+- Google URL Inspection API
+- automatic daily performance-data refresh
+
+The crawler itself can still run locally every day, but Search Console metrics only become fresher when a newer export is imported.
+
+> Standard Search Console exports often provide Queries and Pages as separate datasets. When an export does not contain an exact Query → Page mapping, SeoMind does not invent one. Query opportunities are shown at property level. If a detailed file contains both Query and Page columns, Query ↔ Content matching is enabled automatically.
 
 ---
 
@@ -447,6 +494,7 @@ Then open `http://127.0.0.1:3000`.
 - [x] Local-first FastAPI backend
 - [x] Bilingual Next.js UI
 - [x] Google OAuth + property selection
+- [x] Privacy Mode with CSV / XLSX / ZIP Search Console import
 - [x] Search Analytics import
 - [x] Opportunity Engine
 - [x] SQLite audit persistence
@@ -516,7 +564,15 @@ http://127.0.0.1:3000
 
 رابط برنامه از داخل خود SeoMind بین **فارسی و انگلیسی** تغییر می‌کند و در حالت فارسی RTL است.
 
-### اتصال گوگل
+### Privacy Mode بدون OAuth
+
+اگر نخواهید حساب Google را متصل کنید، در Wizard گزینه **Privacy Mode** را انتخاب کنید. آدرس سایت را وارد کرده و فایل CSV، Excel یا ZIP خروجی Search Console را Import کنید. Dashboard، Opportunity Engine، Crawl، ممیزی فنی و AI محلی بدون Google Cloud کار می‌کنند.
+
+در این حالت دریافت خودکار داده جدید Search Console و URL Inspection غیرفعال است و برای تازه‌شدن داده‌ها باید Export جدید Import شود.
+
+اگر فایل استاندارد Search Console نگاشت دقیق Query به Page نداشته باشد، SeoMind چیزی را حدس نمی‌زند؛ تحلیل Query در سطح Property انجام می‌شود. فایل‌های دقیق‌تر که هر دو ستون Query و Page را داشته باشند، قابلیت Query ↔ Content را خودکار فعال می‌کنند.
+
+### اتصال مستقیم گوگل
 
 در Google Cloud یک OAuth Client از نوع **Web application** بسازید و Redirect URI زیر را ثبت کنید:
 

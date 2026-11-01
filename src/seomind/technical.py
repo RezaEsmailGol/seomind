@@ -70,6 +70,69 @@ class TechnicalAuditService:
         self.gsc = search_console
         self.store = store
 
+    async def run_offline(
+        self,
+        site_url: str,
+        *,
+        imported: dict[str, Any],
+        max_pages: int = 50,
+    ) -> dict[str, Any]:
+        raw_query_page = imported.get("query_page", []) or []
+        raw_pages = imported.get("pages", []) or []
+
+        gsc_rows = [
+            {
+                "keys": [str(row.get("page", "")), str(row.get("query", ""))],
+                "clicks": row.get("clicks", 0),
+                "impressions": row.get("impressions", 0),
+                "ctr": row.get("ctr", 0),
+                "position": row.get("position", 0),
+            }
+            for row in raw_query_page
+            if row.get("page") and row.get("query")
+        ]
+
+        seed_urls = [
+            str(row.get("page", ""))
+            for row in (raw_pages or raw_query_page)
+            if row.get("page")
+        ]
+        crawler = TechnicalCrawler(site_url)
+        try:
+            crawl_result = await crawler.crawl(seed_urls=seed_urls, max_pages=max_pages)
+        except CrawlError as exc:
+            raise TechnicalAuditError(str(exc)) from exc
+
+        pages = attach_query_matches(crawl_result["pages"], gsc_rows)
+        pages = sorted(
+            pages,
+            key=lambda page: (
+                int(page.get("technical_score", 0)),
+                -sum(float(item.get("impressions", 0)) for item in page.get("query_matches", [])),
+            ),
+        )
+
+        result: dict[str, Any] = {
+            "site_url": site_url,
+            "period": {"start": "", "end": "", "days": 0},
+            "sitemaps": crawl_result["sitemaps"],
+            "sitemap_url_count": crawl_result["sitemap_url_count"],
+            "gsc_rows_analyzed": len(gsc_rows),
+            "summary": summarize_pages(pages),
+            "pages": pages,
+            "source": "offline_import",
+            "query_page_mapping": bool(gsc_rows),
+        }
+        audit_id = self.store.save_technical_audit(
+            site_url=site_url,
+            start_date="",
+            end_date="",
+            page_count=len(pages),
+            payload=result,
+        )
+        result["technical_audit_id"] = audit_id
+        return result
+
     async def run(
         self,
         site_url: str,
