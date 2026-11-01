@@ -44,7 +44,9 @@ def _number(value: Any, *, percent: bool = False) -> float:
         number = float(text)
     except ValueError:
         return 0.0
-    if percent or is_percent:
+    if is_percent:
+        return number / 100.0
+    if percent:
         return number / 100.0 if number > 1 else number
     return number
 
