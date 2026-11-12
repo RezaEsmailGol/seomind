@@ -1,0 +1,1 @@
+import {googleGet} from "@/lib/gsc-auth"; export const runtime="nodejs"; export async function GET(){return googleGet("sites");}
